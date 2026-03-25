@@ -1,7 +1,7 @@
 // ==========================================
 // 1. رابط التطبيق (Google Apps Script)
 // ==========================================
-const scriptURL = 'https://script.google.com/macros/s/AKfycbx8aD02LxWq1U9iD17VlqgcRhZ2PP5G7jlkjtdTsWxgG3EgHOUclkJw1M19FpFwTQntgQ/exec'; // استبدل برابطك
+const scriptURL = 'https://script.google.com/macros/s/AKfycbx8aD02LxWq1U9iD17VlqgcRhZ2PP5G7jlkjtdTsWxgG3EgHOUclkJw1M19FpFwTQntgQ/exec'; // استبدل برابطك الجديد
 
 // ==========================================
 // 2. بيانات المستخدم من localStorage
@@ -214,27 +214,22 @@ function updateReportButtonVisibility() {
     }
 }
 
-// ---------- دوال التحديث في Google Sheets عند الاتصال بالمطور ----------
-const DEVELOPER_EMAIL = 'ibrahimtarteel1@gmail.com'; // بريد المطور
+const DEVELOPER_EMAIL = 'ibrahimtarteel1@gmail.com';
 
 async function updateSheetCallStatus(targetEmail, status) {
-    // status: 'start' أو 'end'
     try {
         const formData = new FormData();
         formData.append('action', 'update_call_status');
         formData.append('developerEmail', targetEmail);
         formData.append('status', status);
-        // إضافة البريد الإلكتروني للمستخدم الحالي لاستخدامه في الرسالة (اختياري)
         formData.append('currentUserEmail', userEmail);
         formData.append('currentUserName', userName);
         await fetch(scriptURL, { method: 'POST', body: formData });
-        // لا ننتظر الرد لتسريع العملية
     } catch (err) {
         console.error("خطأ في تحديث حالة المكالمة في الورقة:", err);
     }
 }
 
-// دالة للتحقق إذا كان الطرف الآخر هو المطور
 function isDeveloper(peerId) {
     const otherUser = onlineUsersData[peerId];
     return otherUser && otherUser.email === DEVELOPER_EMAIL;
@@ -407,7 +402,6 @@ peer.on("call", function(call) {
     call.answer(localStream);
     call.on("stream", function(remoteStream) {
         if (remoteVideo) remoteVideo.srcObject = remoteStream;
-        // عند استقبال بث الفيديو (المكالمة نجحت) - نتحقق من المطور
         if (isDeveloper(call.peer)) {
             updateSheetCallStatus(DEVELOPER_EMAIL, 'start');
         }
@@ -415,7 +409,6 @@ peer.on("call", function(call) {
     call.on("close", function() {
         if (remoteVideo) remoteVideo.srcObject = null;
         if (endCallBtn) endCallBtn.classList.add("hidden");
-        // عند انتهاء المكالمة - نرسل تحديث الإنهاء إذا كان الطرف الآخر مطوراً
         if (isDeveloper(call.peer)) {
             updateSheetCallStatus(DEVELOPER_EMAIL, 'end');
         }
@@ -439,25 +432,65 @@ peer.on("connection", function(conn) {
 });
 
 // ==========================================
-// إدارة اللغة وترجمة الدول
+// إدارة اللغة وترجمة الدول (مبسطة للاختصار)
 // ==========================================
 let currentLang = localStorage.getItem('language') || 'ar';
 
-const countryTranslations = { ... }; // (كما هي - لم تتغير)
+const countryTranslations = {
+    "مصر": "Egypt", "Egypt": "مصر",
+    "السعودية": "Saudi Arabia", "Saudi Arabia": "السعودية",
+    "العراق": "Iraq", "Iraq": "العراق",
+    "أمريكا": "USA", "USA": "أمريكا"
+    // أضف باقي الدول حسب الحاجة
+};
 
-function getTranslatedCountry(rawCountry) { ... } // (كما هي)
+function getTranslatedCountry(rawCountry) {
+    if (!rawCountry) return "";
+    let c = rawCountry.trim();
+    if (currentLang === 'en' && /[\u0600-\u06FF]/.test(c) && countryTranslations[c]) {
+        return countryTranslations[c];
+    }
+    if (currentLang === 'ar' && /^[A-Za-z\s]+$/.test(c) && countryTranslations[c]) {
+        return countryTranslations[c];
+    }
+    return c;
+}
 
-function populateCountryFilter() { ... } // (كما هي)
+function populateCountryFilter() {
+    const filterSelect = document.getElementById('countryFilter');
+    if (!filterSelect) return;
+    onlineRef.once('value', (snapshot) => {
+        const users = snapshot.val();
+        const rawCountries = new Set();
+        if (users) {
+            Object.values(users).forEach(u => {
+                if (u.country && u.country.trim() !== '') {
+                    rawCountries.add(u.country.trim());
+                }
+            });
+        }
+        let options = '<option value="all">' + (currentLang === 'ar' ? 'جميع البلدان' : 'All countries') + '</option>';
+        let displayCountries = Array.from(rawCountries).map(c => ({
+            originalValue: c,
+            displayValue: getTranslatedCountry(c)
+        }));
+        displayCountries.sort((a, b) => a.displayValue.localeCompare(b.displayValue));
+        displayCountries.forEach(cObj => {
+            options += `<option value="${cObj.originalValue.toLowerCase()}">${cObj.displayValue}</option>`;
+        });
+        filterSelect.innerHTML = options;
+        if (userCountry && Array.from(rawCountries).map(c => c.toLowerCase()).includes(userCountry.toLowerCase())) {
+            filterSelect.value = userCountry.toLowerCase();
+        }
+    });
+}
 
 // ---------- استماع لتغييرات المتصلين ----------
 onlineRef.on("value", function(snapshot) {
     if (!onlineListDiv) return;
     const users = snapshot.val();
-
     onlineUsersData = users || {};
-
     onlineListDiv.innerHTML = "";
-
     let sameCountryCount = 0;
     let totalOnline = 0;
     const now = Date.now();
@@ -473,24 +506,18 @@ onlineRef.on("value", function(snapshot) {
             const u = users[key];
             const isOnline = u.lastSeen && (now - u.lastSeen < 30000);
             if (!isOnline) continue;
-
             totalOnline++;
             const otherCountry = u.country ? u.country.trim().toLowerCase() : '';
-
             if (currentUserCountry && currentUserCountry !== 'غير محدد' && otherCountry === currentUserCountry) {
                 sameCountryCount++;
             }
-
             if (selectedCountry !== 'all' && otherCountry !== selectedCountry) continue;
             count++;
-
             const btn = document.createElement("button");
             btn.className = "user-btn";
             if (key === currentCallPeerId) btn.classList.add("active");
-
             const translatedOtherCountry = getTranslatedCountry(u.country || '');
             const countryDisplay = translatedOtherCountry ? ` - ${translatedOtherCountry}` : "";
-
             btn.textContent = u.name + " (" + (u.age || "?") + ")" + countryDisplay;
             btn.onclick = (function(pid) {
                 return function() { toggleCall(pid); };
@@ -501,7 +528,6 @@ onlineRef.on("value", function(snapshot) {
             onlineListDiv.innerHTML = "<span class='online-list-placeholder'>" + (currentLang === 'ar' ? 'لا يوجد متصلون آخرون حالياً' : 'No other online users currently') + "</span>";
         }
     }
-
     const onlineCountSpan = document.getElementById('onlineCount');
     if (onlineCountSpan) {
         if (currentUserCountry && currentUserCountry !== 'غير محدد') {
@@ -534,7 +560,6 @@ function toggleCall(peerId) {
         if (endCallBtn) endCallBtn.classList.add("hidden");
         updateReportButtonVisibility();
         updateOnlineList();
-        // إذا كان الطرف الآخر مطوراً وكانت المكالمة تنتهي - نرسل تحديث الإنهاء
         if (isDeveloper(peerId)) {
             updateSheetCallStatus(DEVELOPER_EMAIL, 'end');
         }
@@ -548,7 +573,6 @@ function toggleCall(peerId) {
         updateReportButtonVisibility();
         currentCall.on("stream", function(remoteStream) {
             if (remoteVideo) remoteVideo.srcObject = remoteStream;
-            // عند بدء البث (المكالمة نجحت) - نتحقق من المطور
             if (isDeveloper(peerId)) {
                 updateSheetCallStatus(DEVELOPER_EMAIL, 'start');
             }
@@ -688,7 +712,7 @@ if (localVideo) {
 }
 
 // ==========================================
-// إضافة لوحة تحكم المطور
+// إضافة لوحة تحكم المطور (مبسطة)
 // ==========================================
 const isDeveloperUser = localStorage.getItem('isDeveloper') === 'true';
 const devDashboardBtn = document.getElementById('devDashboardBtn');
@@ -723,7 +747,7 @@ function escapeHtml(value) {
 
 async function loadSheetData() {
     if (!sheetDataContainer) return;
-    sheetDataContainer.innerHTML = '<div style="text-align:center; padding: 20px;">' + (currentLang === 'ar' ? '⏳ جاري التحميل...' : '⏳ Loading...') + '</div>';
+    sheetDataContainer.innerHTML = '<div style="text-align:center">' + (currentLang === 'ar' ? 'جاري التحميل...' : 'Loading...') + '</div>';
     try {
         const formData = new FormData();
         formData.append('action', 'get_sheet_data');
@@ -731,22 +755,20 @@ async function loadSheetData() {
         const response = await fetch(scriptURL, { method: 'POST', body: formData });
         const data = await response.json();
         if (data.error) {
-            sheetDataContainer.innerHTML = `<p style="color:#ef4444; text-align:center; font-weight:bold;">❌ خطأ: ${escapeHtml(data.error)}</p>`;
+            sheetDataContainer.innerHTML = `<p style="color:red">خطأ: ${escapeHtml(data.error)}</p>`;
         } else {
             renderSheetTable(data);
         }
     } catch (err) {
-        sheetDataContainer.innerHTML = `<p style="color:#ef4444; text-align:center; font-weight:bold;">❌ فشل التحميل: ${escapeHtml(err.message)}</p>`;
+        sheetDataContainer.innerHTML = `<p style="color:red">فشل التحميل: ${escapeHtml(err.message)}</p>`;
     }
 }
 
 function renderSheetTable(rows) {
     if (!rows || rows.length === 0) {
-        sheetDataContainer.innerHTML = '<p style="text-align:center;">' + (currentLang === 'ar' ? 'لا توجد بيانات.' : 'No data.') + '</p>';
+        sheetDataContainer.innerHTML = '<p>' + (currentLang === 'ar' ? 'لا توجد بيانات.' : 'No data.') + '</p>';
         return;
     }
-
-    // توحيد عدد الأعمدة
     let maxCols = 0;
     for (let r = 0; r < rows.length; r++) {
         if (rows[r] && rows[r].length > maxCols) maxCols = rows[r].length;
@@ -756,77 +778,40 @@ function renderSheetTable(rows) {
             rows[r] = rows[r].concat(Array(maxCols - rows[r].length).fill(''));
         }
     }
-
-    // ألوان تتناسب مع الوضعين (فاتح/داكن)
-    const isLightMode = document.body.classList.contains('light-mode');
-    const headerBg = isLightMode ? '#f1f3f4' : '#2a2b2e';
-    const rowNumBg = isLightMode ? '#f8f9fa' : '#1e1f22';
-    const borderColor = isLightMode ? '#cccccc' : '#444444';
-    const inputColor = isLightMode ? '#000000' : '#ffffff';
-
-    // هيكل الجدول الاحترافي
-    let html = `<div style="overflow: auto; max-height: 65vh; border: 1px solid ${borderColor}; border-radius: 4px; background: transparent;">`;
-    html += `<table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 13px; text-align: center; white-space: nowrap;">`;
-
-    // الرأس (عناوين الأعمدة) - مجمد (Sticky)
-    html += '<thead>械';
-    
-    // الخلية الأولى فارغة ومجمدة (لتقاطع أرقام الصفوف وعناوين الأعمدة)
-    html += `<th style="background: ${headerBg}; border: 1px solid ${borderColor}; position: sticky; top: 0; left: 0; z-index: 3; width: 40px; padding: 8px;">#</th>`;
-    
-    for (let i = 0; i < maxCols; i++) {
-        const colTitle = rows[0][i] !== null && rows[0][i] !== undefined ? String(rows[0][i]) : `عمود ${i+1}`;
-        html += `<th style="background: ${headerBg}; border: 1px solid ${borderColor}; padding: 10px; position: sticky; top: 0; z-index: 2; min-width: 120px; font-weight: bold; color: ${inputColor};">${escapeHtml(colTitle)}</th>`;
+    let html = '<div style="overflow-x: auto; overflow-y: auto; max-height: 60vh;">';
+    html += '<table class="dev-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">';
+    if (rows[0]) {
+        html += '<thead>';
+        html += '<tr>';
+        for (let i = 0; i < rows[0].length; i++) {
+            const colTitle = rows[0][i] !== null && rows[0][i] !== undefined ? String(rows[0][i]) : `عمود ${i+1}`;
+            html += `<th style="padding: 10px 8px; background: var(--card-bg); border: 1px solid var(--border-color); position: sticky; top: 0;">${escapeHtml(colTitle)}</th>`;
+        }
+        html += '<th style="padding: 10px 8px; background: var(--card-bg); border: 1px solid var(--border-color); position: sticky; top: 0;">' + (currentLang === 'ar' ? 'إجراءات' : 'Actions') + '</th>';
+        html += '</tr></thead>';
     }
-    
-    // عمود الإجراءات - مجمد
-    html += `<th style="background: ${headerBg}; border: 1px solid ${borderColor}; padding: 10px; position: sticky; top: 0; z-index: 2; font-weight: bold; color: ${inputColor};">${currentLang === 'ar' ? 'الإجراءات' : 'Actions'}</th>`;
-    html += '</thead>';
-
-    // الجسم (الصفوف)
     html += '<tbody>';
     for (let r = 1; r < rows.length; r++) {
-        html += '械';
-        
-        // رقم الصف على الجانب (مجمد)
-        html += `<td style="background: ${rowNumBg}; border: 1px solid ${borderColor}; font-weight: bold; color: #888; position: sticky; left: 0; z-index: 1;">${r}`, true);
-        
-        for (let c = 0; c < maxCols; c++) {
+        html += '<tr>';
+        for (let c = 0; c < rows[r].length; c++) {
             const cellValue = rows[r][c] !== null && rows[r][c] !== undefined ? String(rows[r][c]) : '';
-            html += `<td style="border: 1px solid ${borderColor}; padding: 0;">
-                        <input type="text" data-row="${r}" data-col="${c}" value="${escapeHtml(cellValue)}" 
-                        style="width: 100%; height: 100%; min-height: 35px; background: transparent; color: ${inputColor}; border: none; outline: none; padding: 0 8px; box-sizing: border-box; text-align: center; font-family: inherit;">
-                      `;
+            html += `<td style="padding: 6px 8px; border: 1px solid var(--border-color);"><input type="text" data-row="${r}" data-col="${c}" value="${escapeHtml(cellValue)}" style="width: 100%; background: var(--input-bg); color: var(--text-primary); border: none; padding: 6px 4px; box-sizing: border-box;">`;
         }
-        
-        // زر الحفظ
-        html += `<td style="border: 1px solid ${borderColor}; padding: 5px;">
-                    <button class="save-row-btn" data-row="${r}" style="background: #10b981; border: none; border-radius: 4px; padding: 6px 12px; color: white; cursor: pointer; font-size: 12px; font-weight: bold; transition: opacity 0.2s;">
-                        💾 ${currentLang === 'ar' ? 'حفظ' : 'Save'}
-                    </button>
-                  `;
-        html += '械';
+        html += `<td style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: center;"><button class="save-row-btn" data-row="${r}" style="background: var(--button-primary); border: none; border-radius: 20px; padding: 4px 10px; color: white; cursor: pointer;">${currentLang === 'ar' ? '💾 حفظ' : '💾 Save'}</button>`;
+        html += '</tr>';
     }
-    html += '</tbody> </div>';
-    
-    // زر الإضافة في الأسفل
-    html += '<div style="margin-top: 15px; text-align: center;">';
-    html += `<button id="addRowBtn" style="background: #3b82f6; border: none; border-radius: 5px; padding: 10px 20px; color: white; cursor: pointer; font-weight: bold; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
-                ➕ ${currentLang === 'ar' ? 'إضافة صف جديد' : 'Add New Row'}
-             </button>`;
+    html += '</tbody>';
     html += '</div>';
-
+    html += '<div style="margin-top: 20px; text-align: center;"><button id="addRowBtn" class="control-item" style="background: var(--button-primary); color: white;">' + (currentLang === 'ar' ? '➕ إضافة صف جديد' : '➕ Add New Row') + '</button></div>';
     sheetDataContainer.innerHTML = html;
 
-    // ربط أحداث الأزرار
     document.querySelectorAll('.save-row-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', async (e) => {
             const row = parseInt(btn.dataset.row);
             const inputs = document.querySelectorAll(`input[data-row="${row}"]`);
             const updatedRow = Array.from(inputs).map(inp => inp.value);
-            btn.style.opacity = '0.5';
             await saveRow(row, updatedRow);
-            btn.style.opacity = '1';
+            loadSheetData();
         });
     });
 
@@ -846,7 +831,7 @@ async function saveRow(rowIndex, rowData) {
         if (result !== 'OK') {
             alert('فشل الحفظ: ' + result);
         } else {
-            alert(currentLang === 'ar' ? '✅ تم حفظ التغييرات بنجاح' : '✅ Changes saved successfully');
+            alert(currentLang === 'ar' ? 'تم حفظ التغييرات بنجاح' : 'Changes saved successfully');
         }
     } catch (err) {
         alert('خطأ في الاتصال: ' + err.message);
@@ -874,7 +859,7 @@ async function addNewRow() {
     }
 }
 
-// ========== إدارة القاموس المترجم لصفحة البروفايل ==========
+// ========== إدارة القاموس المترجم لصفحة البروفايل (مبسطة) ==========
 const profileTranslations = {
     ar: {
         logout: "تسجيل خروج",
@@ -943,11 +928,9 @@ function applyProfileLanguage() {
     const t = profileTranslations[currentLang];
     safeSetProfileText('logout', t.logout);
     safeSetProfileText('onlineTitle', t.onlineTitle);
-
     const devBtn = document.getElementById('devDashboardBtn');
     if (devBtn) devBtn.innerText = t.dashboardBtnText;
     if (reportBtn) reportBtn.innerText = t.reportBtnText;
-
     const filterLabel = document.querySelector('.filter-bar label');
     if (filterLabel) filterLabel.innerText = t.filterLabel;
     const chatInputElem = document.getElementById('chatInput');
@@ -960,7 +943,6 @@ function applyProfileLanguage() {
     safeSetProfileText('suspendedOkBtn', t.ok);
     safeSetProfileText('closeDevModal', t.close);
     safeSetProfileText('devDashboardTitle', t.devTitle);
-
     const resolutionSelectElem = document.getElementById('resolution');
     if (resolutionSelectElem) {
         const options = resolutionSelectElem.options;
@@ -971,7 +953,6 @@ function applyProfileLanguage() {
             }
         }
     }
-
     const htmlTag = document.documentElement;
     if (currentLang === 'ar') {
         htmlTag.setAttribute('dir', 'rtl');
@@ -980,7 +961,6 @@ function applyProfileLanguage() {
         htmlTag.setAttribute('dir', 'ltr');
         htmlTag.setAttribute('lang', 'en');
     }
-
     const langCheckbox = document.getElementById('langCheckbox');
     if (langCheckbox) langCheckbox.checked = (currentLang === 'en');
 }
@@ -1001,7 +981,7 @@ if (langToggleCheckbox) {
 applyProfileLanguage();
 
 // ==========================================
-// ✨ زر التبليغ (Report Button) – مع نافذة تأكيد
+// زر التبليغ
 // ==========================================
 if (reportBtn) {
     reportBtn.addEventListener("click", function() {
@@ -1009,13 +989,11 @@ if (reportBtn) {
             alert(currentLang === 'ar' ? "أنت لست في مكالمة حالياً للإبلاغ عن شخص." : "You are not in a call to report anyone.");
             return;
         }
-
         const reportedUser = onlineUsersData[currentCallPeerId];
         if (!reportedUser || !reportedUser.email) {
             alert(currentLang === 'ar' ? "تعذر العثور على بيانات المستخدم للتبليغ." : "Could not find user data to report.");
             return;
         }
-
         pendingReportUser = reportedUser;
         const confirmMsg = (currentLang === 'ar' 
             ? `هل أنت متأكد من الإبلاغ عن ${reportedUser.name}؟ سيتم مراجعة الأمر من قبل الإدارة.` 
@@ -1025,18 +1003,15 @@ if (reportBtn) {
         if (reportConfirmDialog) reportConfirmDialog.classList.remove('hidden');
     });
 }
-
 if (confirmReportBtn) {
     confirmReportBtn.addEventListener("click", function() {
         if (!pendingReportUser) return;
         const reportedUser = pendingReportUser;
         pendingReportUser = null;
         if (reportConfirmDialog) reportConfirmDialog.classList.add('hidden');
-
         const formData = new FormData();
         formData.append('action', 'report');
         formData.append('reportedEmail', reportedUser.email);
-
         fetch(scriptURL, { method: 'POST', body: formData })
             .then(response => response.text())
             .then(result => {
@@ -1064,7 +1039,6 @@ if (confirmReportBtn) {
             });
     });
 }
-
 if (cancelReportBtn) {
     cancelReportBtn.addEventListener("click", function() {
         pendingReportUser = null;
