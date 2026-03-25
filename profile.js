@@ -198,7 +198,6 @@ if (endCallBtn) endCallBtn.classList.add("hidden");
 
 let isCameraInitializing = false;
 
-// ========== إضافة متغير لتتبع البريد المستهدف لتحديث الرسالة ==========
 let currentTargetEmailForCall = null;
 
 function updateLocalVideoMirror() {
@@ -217,7 +216,7 @@ function updateReportButtonVisibility() {
     }
 }
 
-const DEVELOPER_EMAIL = 'ibrahimtarteel1@gmail.com'; // بريد المطور
+const DEVELOPER_EMAIL = 'ibrahimtarteel1@gmail.com';
 
 async function updateSheetCallStatus(targetEmail, status) {
     try {
@@ -405,13 +404,10 @@ peer.on("call", function(call) {
     call.answer(localStream);
     call.on("stream", function(remoteStream) {
         if (remoteVideo) remoteVideo.srcObject = remoteStream;
-        // تحديد البريد المستهدف للتحديث (المستخدم العادي)
         if (isDeveloper(call.peer)) {
-            // الطرف الآخر مطور → نحدث المستخدم الحالي (العادي)
             currentTargetEmailForCall = userEmail;
             updateSheetCallStatus(currentTargetEmailForCall, 'start');
         } else if (userEmail === DEVELOPER_EMAIL) {
-            // المستخدم الحالي مطور → نحدث الطرف الآخر (العادي)
             const otherUser = onlineUsersData[call.peer];
             if (otherUser && otherUser.email) {
                 currentTargetEmailForCall = otherUser.email;
@@ -589,14 +585,12 @@ if (filterSelect) {
     });
 }
 
-// ---------- دالة الاتصال وإنهاء المكالمة (معدلة لتحديث البريد الصحيح) ----------
 function toggleCall(peerId) {
     if (!localStream) {
         alert("الكاميرا لم تبدأ بعد");
         return;
     }
     if (currentCall && currentCallPeerId === peerId) {
-        // إنهاء المكالمة
         currentCall.close();
         if (currentConnection) currentConnection.close();
         currentCall = null;
@@ -611,7 +605,6 @@ function toggleCall(peerId) {
             currentTargetEmailForCall = null;
         }
     } else {
-        // بدء مكالمة جديدة
         if (currentCall) {
             currentCall.close();
             if (currentConnection) currentConnection.close();
@@ -619,21 +612,16 @@ function toggleCall(peerId) {
         currentCall = peer.call(peerId, localStream);
         currentCallPeerId = peerId;
         updateReportButtonVisibility();
-        
-        // تحديد البريد المستهدف للتحديث (المستخدم العادي)
         if (isDeveloper(peerId)) {
-            // الطرف الآخر مطور → نحدث المستخدم الحالي (العادي)
             currentTargetEmailForCall = userEmail;
             updateSheetCallStatus(currentTargetEmailForCall, 'start');
         } else if (userEmail === DEVELOPER_EMAIL) {
-            // المستخدم الحالي مطور → نحدث الطرف الآخر (العادي)
             const otherUser = onlineUsersData[peerId];
             if (otherUser && otherUser.email) {
                 currentTargetEmailForCall = otherUser.email;
                 updateSheetCallStatus(currentTargetEmailForCall, 'start');
             }
         }
-        
         currentCall.on("stream", function(remoteStream) {
             if (remoteVideo) remoteVideo.srcObject = remoteStream;
         });
@@ -778,7 +766,7 @@ if (localVideo) {
 }
 
 // ==========================================
-// إضافة لوحة تحكم المطور (كما هي)
+// إضافة لوحة تحكم المطور (بتصميم عمودي صحيح)
 // ==========================================
 const isDeveloperUser = localStorage.getItem('isDeveloper') === 'true';
 const devDashboardBtn = document.getElementById('devDashboardBtn');
@@ -813,7 +801,7 @@ function escapeHtml(value) {
 
 async function loadSheetData() {
     if (!sheetDataContainer) return;
-    sheetDataContainer.innerHTML = '<div style="text-align:center">' + (currentLang === 'ar' ? 'جاري التحميل...' : 'Loading...') + '</div>';
+    sheetDataContainer.innerHTML = '<div style="text-align:center; padding: 20px;">' + (currentLang === 'ar' ? '⏳ جاري التحميل...' : '⏳ Loading...') + '</div>';
     try {
         const formData = new FormData();
         formData.append('action', 'get_sheet_data');
@@ -821,20 +809,21 @@ async function loadSheetData() {
         const response = await fetch(scriptURL, { method: 'POST', body: formData });
         const data = await response.json();
         if (data.error) {
-            sheetDataContainer.innerHTML = `<p style="color:red">خطأ: ${escapeHtml(data.error)}</p>`;
+            sheetDataContainer.innerHTML = `<p style="color:#ef4444; text-align:center; font-weight:bold;">❌ خطأ: ${escapeHtml(data.error)}</p>`;
         } else {
             renderSheetTable(data);
         }
     } catch (err) {
-        sheetDataContainer.innerHTML = `<p style="color:red">فشل التحميل: ${escapeHtml(err.message)}</p>`;
+        sheetDataContainer.innerHTML = `<p style="color:#ef4444; text-align:center; font-weight:bold;">❌ فشل التحميل: ${escapeHtml(err.message)}</p>`;
     }
 }
 
 function renderSheetTable(rows) {
     if (!rows || rows.length === 0) {
-        sheetDataContainer.innerHTML = '<p>' + (currentLang === 'ar' ? 'لا توجد بيانات.' : 'No data.') + '</p>';
+        sheetDataContainer.innerHTML = '<p style="text-align:center;">' + (currentLang === 'ar' ? 'لا توجد بيانات.' : 'No data.') + '</p>';
         return;
     }
+
     let maxCols = 0;
     for (let r = 0; r < rows.length; r++) {
         if (rows[r] && rows[r].length > maxCols) maxCols = rows[r].length;
@@ -844,18 +833,19 @@ function renderSheetTable(rows) {
             rows[r] = rows[r].concat(Array(maxCols - rows[r].length).fill(''));
         }
     }
+
     let html = '<div style="overflow-x: auto; overflow-y: auto; max-height: 60vh;">';
     html += '<table class="dev-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">';
-    if (rows[0]) {
-        html += '<thead>';
-        html += '械';
-        for (let i = 0; i < rows[0].length; i++) {
-            const colTitle = rows[0][i] !== null && rows[0][i] !== undefined ? String(rows[0][i]) : `عمود ${i+1}`;
-            html += `<th style="padding: 10px 8px; background: var(--card-bg); border: 1px solid var(--border-color); position: sticky; top: 0;">${escapeHtml(colTitle)}</th>`;
-        }
-        html += '<th style="padding: 10px 8px; background: var(--card-bg); border: 1px solid var(--border-color); position: sticky; top: 0;">' + (currentLang === 'ar' ? 'إجراءات' : 'Actions') + '</th>';
-        html += '</thead>';
+
+    html += '<thead>';
+    html += '械';
+    for (let i = 0; i < rows[0].length; i++) {
+        const colTitle = rows[0][i] !== null && rows[0][i] !== undefined ? String(rows[0][i]) : `عمود ${i+1}`;
+        html += `<th style="padding: 10px 8px; background: var(--card-bg); border: 1px solid var(--border-color); position: sticky; top: 0;">${escapeHtml(colTitle)}</th>`;
     }
+    html += '<th style="padding: 10px 8px; background: var(--card-bg); border: 1px solid var(--border-color); position: sticky; top: 0;">' + (currentLang === 'ar' ? 'إجراءات' : 'Actions') + '</th>';
+    html += '</thead>';
+
     html += '<tbody>';
     for (let r = 1; r < rows.length; r++) {
         html += '械';
@@ -872,12 +862,13 @@ function renderSheetTable(rows) {
     sheetDataContainer.innerHTML = html;
 
     document.querySelectorAll('.save-row-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
+        btn.addEventListener('click', async () => {
             const row = parseInt(btn.dataset.row);
             const inputs = document.querySelectorAll(`input[data-row="${row}"]`);
             const updatedRow = Array.from(inputs).map(inp => inp.value);
+            btn.style.opacity = '0.5';
             await saveRow(row, updatedRow);
-            loadSheetData();
+            btn.style.opacity = '1';
         });
     });
 
@@ -1047,7 +1038,7 @@ if (langToggleCheckbox) {
 applyProfileLanguage();
 
 // ==========================================
-// زر التبليغ (كما هو)
+// زر التبليغ (مع التقاط صورة)
 // ==========================================
 if (reportBtn) {
     reportBtn.addEventListener("click", function() {
@@ -1069,20 +1060,46 @@ if (reportBtn) {
         if (reportConfirmDialog) reportConfirmDialog.classList.remove('hidden');
     });
 }
+
 if (confirmReportBtn) {
     confirmReportBtn.addEventListener("click", function() {
         if (!pendingReportUser) return;
         const reportedUser = pendingReportUser;
         pendingReportUser = null;
         if (reportConfirmDialog) reportConfirmDialog.classList.add('hidden');
+        
         const formData = new FormData();
         formData.append('action', 'report');
         formData.append('reportedEmail', reportedUser.email);
+        
         fetch(scriptURL, { method: 'POST', body: formData })
             .then(response => response.text())
             .then(result => {
                 if (result === 'Reported') {
                     alert(currentLang === 'ar' ? "تم الإبلاغ بنجاح. ستقوم الإدارة بالمراجعة." : "Reported successfully. Admin will review.");
+                    
+                    // ✨ التقاط صورة من الفيديو البعيد وإرسالها
+                    if (remoteVideo && remoteVideo.videoWidth > 0 && remoteVideo.videoHeight > 0) {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = remoteVideo.videoWidth;
+                            canvas.height = remoteVideo.videoHeight;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(remoteVideo, 0, 0, canvas.width, canvas.height);
+                            const dataURL = canvas.toDataURL('image/png');
+                            
+                            const screenshotFormData = new FormData();
+                            screenshotFormData.append('action', 'save_screenshot');
+                            screenshotFormData.append('reportedEmail', reportedUser.email);
+                            screenshotFormData.append('imageData', dataURL);
+                            // إرسال الصورة (لا ننتظر الرد)
+                            fetch(scriptURL, { method: 'POST', body: screenshotFormData })
+                                .catch(e => console.error('فشل إرسال الصورة:', e));
+                        } catch (e) {
+                            console.error('فشل التقاط الصورة:', e);
+                        }
+                    }
+                    
                     if (currentCall) {
                         currentCall.close();
                         if (currentConnection) currentConnection.close();
@@ -1105,6 +1122,7 @@ if (confirmReportBtn) {
             });
     });
 }
+
 if (cancelReportBtn) {
     cancelReportBtn.addEventListener("click", function() {
         pendingReportUser = null;
