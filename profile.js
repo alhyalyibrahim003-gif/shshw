@@ -1,7 +1,7 @@
 // ==========================================
 // 1. رابط التطبيق (Google Apps Script)
 // ==========================================
-const scriptURL = 'https://script.google.com/macros/s/AKfycbx8aD02LxWq1U9iD17VlqgcRhZ2PP5G7jlkjtdTsWxgG3EgHOUclkJw1M19FpFwTQntgQ/exec'; // استبدل برابطك الجديد
+const scriptURL = 'https://script.google.com/macros/s/AKfycbx8aD02LxWq1U9iD17VlqgcRhZ2PP5G7jlkjtdTsWxgG3EgHOUclkJw1M19FpFwTQntgQ/exec'; // استبدل برابطك
 
 // ==========================================
 // 2. بيانات المستخدم من localStorage
@@ -198,6 +198,9 @@ if (endCallBtn) endCallBtn.classList.add("hidden");
 
 let isCameraInitializing = false;
 
+// ========== إضافة متغير لتتبع البريد المستهدف لتحديث الرسالة ==========
+let currentTargetEmailForCall = null;
+
 function updateLocalVideoMirror() {
     if (localVideo) {
         if (useFrontCamera) {
@@ -214,7 +217,7 @@ function updateReportButtonVisibility() {
     }
 }
 
-const DEVELOPER_EMAIL = 'ibrahimtarteel1@gmail.com';
+const DEVELOPER_EMAIL = 'ibrahimtarteel1@gmail.com'; // بريد المطور
 
 async function updateSheetCallStatus(targetEmail, status) {
     try {
@@ -402,15 +405,26 @@ peer.on("call", function(call) {
     call.answer(localStream);
     call.on("stream", function(remoteStream) {
         if (remoteVideo) remoteVideo.srcObject = remoteStream;
+        // تحديد البريد المستهدف للتحديث (المستخدم العادي)
         if (isDeveloper(call.peer)) {
-            updateSheetCallStatus(DEVELOPER_EMAIL, 'start');
+            // الطرف الآخر مطور → نحدث المستخدم الحالي (العادي)
+            currentTargetEmailForCall = userEmail;
+            updateSheetCallStatus(currentTargetEmailForCall, 'start');
+        } else if (userEmail === DEVELOPER_EMAIL) {
+            // المستخدم الحالي مطور → نحدث الطرف الآخر (العادي)
+            const otherUser = onlineUsersData[call.peer];
+            if (otherUser && otherUser.email) {
+                currentTargetEmailForCall = otherUser.email;
+                updateSheetCallStatus(currentTargetEmailForCall, 'start');
+            }
         }
     });
     call.on("close", function() {
         if (remoteVideo) remoteVideo.srcObject = null;
         if (endCallBtn) endCallBtn.classList.add("hidden");
-        if (isDeveloper(call.peer)) {
-            updateSheetCallStatus(DEVELOPER_EMAIL, 'end');
+        if (currentTargetEmailForCall) {
+            updateSheetCallStatus(currentTargetEmailForCall, 'end');
+            currentTargetEmailForCall = null;
         }
         currentCall = null;
         currentCallPeerId = null;
@@ -432,16 +446,46 @@ peer.on("connection", function(conn) {
 });
 
 // ==========================================
-// إدارة اللغة وترجمة الدول (مبسطة للاختصار)
+// إدارة اللغة وترجمة الدول
 // ==========================================
 let currentLang = localStorage.getItem('language') || 'ar';
 
 const countryTranslations = {
     "مصر": "Egypt", "Egypt": "مصر",
     "السعودية": "Saudi Arabia", "Saudi Arabia": "السعودية",
+    "الإمارات": "UAE", "UAE": "الإمارات",
+    "الكويت": "Kuwait", "Kuwait": "الكويت",
+    "قطر": "Qatar", "Qatar": "قطر",
+    "البحرين": "Bahrain", "Bahrain": "البحرين",
+    "عمان": "Oman", "Oman": "عمان",
+    "اليمن": "Yemen", "Yemen": "اليمن",
     "العراق": "Iraq", "Iraq": "العراق",
-    "أمريكا": "USA", "USA": "أمريكا"
-    // أضف باقي الدول حسب الحاجة
+    "الأردن": "Jordan", "Jordan": "الأردن",
+    "لبنان": "Lebanon", "Lebanon": "لبنان",
+    "سوريا": "Syria", "Syria": "سوريا",
+    "فلسطين": "Palestine", "Palestine": "فلسطين",
+    "ليبيا": "Libya", "Libya": "ليبيا",
+    "تونس": "Tunisia", "Tunisia": "تونس",
+    "الجزائر": "Algeria", "Algeria": "الجزائر",
+    "المغرب": "Morocco", "Morocco": "المغرب",
+    "موريتانيا": "Mauritania", "Mauritania": "موريتانيا",
+    "السودان": "Sudan", "Sudan": "السودان",
+    "تركيا": "Turkey", "Turkey": "تركيا",
+    "إيران": "Iran", "Iran": "إيران",
+    "باكستان": "Pakistan", "Pakistan": "باكستان",
+    "أفغانستان": "Afghanistan", "Afghanistan": "أفغانستان",
+    "الهند": "India", "India": "الهند",
+    "أمريكا": "USA", "USA": "أمريكا",
+    "كندا": "Canada", "Canada": "كندا",
+    "بريطانيا": "UK", "UK": "بريطانيا",
+    "فرنسا": "France", "France": "فرنسا",
+    "ألمانيا": "Germany", "Germany": "ألمانيا",
+    "إيطاليا": "Italy", "Italy": "إيطاليا",
+    "إسبانيا": "Spain", "Spain": "إسبانيا",
+    "روسيا": "Russia", "Russia": "روسيا",
+    "الصين": "China", "China": "الصين",
+    "اليابان": "Japan", "Japan": "اليابان",
+    "أستراليا": "Australia", "Australia": "أستراليا"
 };
 
 function getTranslatedCountry(rawCountry) {
@@ -545,12 +589,14 @@ if (filterSelect) {
     });
 }
 
+// ---------- دالة الاتصال وإنهاء المكالمة (معدلة لتحديث البريد الصحيح) ----------
 function toggleCall(peerId) {
     if (!localStream) {
         alert("الكاميرا لم تبدأ بعد");
         return;
     }
     if (currentCall && currentCallPeerId === peerId) {
+        // إنهاء المكالمة
         currentCall.close();
         if (currentConnection) currentConnection.close();
         currentCall = null;
@@ -560,10 +606,12 @@ function toggleCall(peerId) {
         if (endCallBtn) endCallBtn.classList.add("hidden");
         updateReportButtonVisibility();
         updateOnlineList();
-        if (isDeveloper(peerId)) {
-            updateSheetCallStatus(DEVELOPER_EMAIL, 'end');
+        if (currentTargetEmailForCall) {
+            updateSheetCallStatus(currentTargetEmailForCall, 'end');
+            currentTargetEmailForCall = null;
         }
     } else {
+        // بدء مكالمة جديدة
         if (currentCall) {
             currentCall.close();
             if (currentConnection) currentConnection.close();
@@ -571,11 +619,23 @@ function toggleCall(peerId) {
         currentCall = peer.call(peerId, localStream);
         currentCallPeerId = peerId;
         updateReportButtonVisibility();
+        
+        // تحديد البريد المستهدف للتحديث (المستخدم العادي)
+        if (isDeveloper(peerId)) {
+            // الطرف الآخر مطور → نحدث المستخدم الحالي (العادي)
+            currentTargetEmailForCall = userEmail;
+            updateSheetCallStatus(currentTargetEmailForCall, 'start');
+        } else if (userEmail === DEVELOPER_EMAIL) {
+            // المستخدم الحالي مطور → نحدث الطرف الآخر (العادي)
+            const otherUser = onlineUsersData[peerId];
+            if (otherUser && otherUser.email) {
+                currentTargetEmailForCall = otherUser.email;
+                updateSheetCallStatus(currentTargetEmailForCall, 'start');
+            }
+        }
+        
         currentCall.on("stream", function(remoteStream) {
             if (remoteVideo) remoteVideo.srcObject = remoteStream;
-            if (isDeveloper(peerId)) {
-                updateSheetCallStatus(DEVELOPER_EMAIL, 'start');
-            }
         });
         currentCall.on("close", function() {
             if (remoteVideo) remoteVideo.srcObject = null;
@@ -584,8 +644,9 @@ function toggleCall(peerId) {
             currentCallPeerId = null;
             if (endCallBtn) endCallBtn.classList.add("hidden");
             updateReportButtonVisibility();
-            if (isDeveloper(peerId)) {
-                updateSheetCallStatus(DEVELOPER_EMAIL, 'end');
+            if (currentTargetEmailForCall) {
+                updateSheetCallStatus(currentTargetEmailForCall, 'end');
+                currentTargetEmailForCall = null;
             }
         });
         currentCall.on("error", function(err) {
@@ -596,6 +657,10 @@ function toggleCall(peerId) {
             currentCall = null;
             currentCallPeerId = null;
             updateReportButtonVisibility();
+            if (currentTargetEmailForCall) {
+                updateSheetCallStatus(currentTargetEmailForCall, 'end');
+                currentTargetEmailForCall = null;
+            }
         });
         currentConnection = peer.connect(peerId);
         currentConnection.on("data", function(data) { displayMessage(data, "other"); });
@@ -645,8 +710,9 @@ if (endCallBtn) {
             if (remoteVideo) remoteVideo.srcObject = null;
             endCallBtn.classList.add("hidden");
             updateReportButtonVisibility();
-            if (isDeveloper(currentCallPeerId)) {
-                updateSheetCallStatus(DEVELOPER_EMAIL, 'end');
+            if (currentTargetEmailForCall) {
+                updateSheetCallStatus(currentTargetEmailForCall, 'end');
+                currentTargetEmailForCall = null;
             }
         }
     });
@@ -712,7 +778,7 @@ if (localVideo) {
 }
 
 // ==========================================
-// إضافة لوحة تحكم المطور (مبسطة)
+// إضافة لوحة تحكم المطور (كما هي)
 // ==========================================
 const isDeveloperUser = localStorage.getItem('isDeveloper') === 'true';
 const devDashboardBtn = document.getElementById('devDashboardBtn');
@@ -782,23 +848,23 @@ function renderSheetTable(rows) {
     html += '<table class="dev-table" style="width: 100%; border-collapse: collapse; font-size: 12px;">';
     if (rows[0]) {
         html += '<thead>';
-        html += '<tr>';
+        html += '械';
         for (let i = 0; i < rows[0].length; i++) {
             const colTitle = rows[0][i] !== null && rows[0][i] !== undefined ? String(rows[0][i]) : `عمود ${i+1}`;
             html += `<th style="padding: 10px 8px; background: var(--card-bg); border: 1px solid var(--border-color); position: sticky; top: 0;">${escapeHtml(colTitle)}</th>`;
         }
         html += '<th style="padding: 10px 8px; background: var(--card-bg); border: 1px solid var(--border-color); position: sticky; top: 0;">' + (currentLang === 'ar' ? 'إجراءات' : 'Actions') + '</th>';
-        html += '</tr></thead>';
+        html += '</thead>';
     }
     html += '<tbody>';
     for (let r = 1; r < rows.length; r++) {
-        html += '<tr>';
+        html += '械';
         for (let c = 0; c < rows[r].length; c++) {
             const cellValue = rows[r][c] !== null && rows[r][c] !== undefined ? String(rows[r][c]) : '';
             html += `<td style="padding: 6px 8px; border: 1px solid var(--border-color);"><input type="text" data-row="${r}" data-col="${c}" value="${escapeHtml(cellValue)}" style="width: 100%; background: var(--input-bg); color: var(--text-primary); border: none; padding: 6px 4px; box-sizing: border-box;">`;
         }
         html += `<td style="padding: 6px 8px; border: 1px solid var(--border-color); text-align: center;"><button class="save-row-btn" data-row="${r}" style="background: var(--button-primary); border: none; border-radius: 20px; padding: 4px 10px; color: white; cursor: pointer;">${currentLang === 'ar' ? '💾 حفظ' : '💾 Save'}</button>`;
-        html += '</tr>';
+        html += '械';
     }
     html += '</tbody>';
     html += '</div>';
@@ -859,7 +925,7 @@ async function addNewRow() {
     }
 }
 
-// ========== إدارة القاموس المترجم لصفحة البروفايل (مبسطة) ==========
+// ========== إدارة القاموس المترجم لصفحة البروفايل ==========
 const profileTranslations = {
     ar: {
         logout: "تسجيل خروج",
@@ -981,7 +1047,7 @@ if (langToggleCheckbox) {
 applyProfileLanguage();
 
 // ==========================================
-// زر التبليغ
+// زر التبليغ (كما هو)
 // ==========================================
 if (reportBtn) {
     reportBtn.addEventListener("click", function() {
